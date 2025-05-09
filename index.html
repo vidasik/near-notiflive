@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Активные трансляции Near-каналов</title>
+    <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
+    <style>
+        :root {
+            --plyr-color-main: #3498db;
+            --plyr-control-radius: 8px;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 20px;
+        }
+
+        .stream-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 30px;
+        }
+
+        .stream-card {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+
+        .stream-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .stream-info {
+            padding: 15px;
+            background: #fff;
+            border-top: 3px solid #2ecc71;
+        }
+
+        .channel-name {
+            margin: 0;
+            color: #2c3e50;
+            font-size: 1.4em;
+        }
+
+        .no-streams {
+            text-align: center;
+            padding: 40px;
+            font-size: 1.5em;
+            color: #7f8c8d;
+            margin: 50px 0;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+
+        .no-streams::before {
+            content: "🔇";
+            font-size: 3em;
+            display: block;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Сейчас в эфире</h1>
+    </div>
+
+    <div class="stream-grid" id="streamsContainer"></div>
+
+    <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.1.5"></script>
+    
+    <script>
+        const streams = [
+            {
+                id: 1,
+                name: 'Near',
+                url: 'https://132544.edgevideo.ru/streams/132544_871130/1325441080/index.m3u8',
+                poster: 'https://i.ibb.co/MT9ZLNZ/near-live-now.png',
+                status: false
+            },
+            {
+                id: 2,
+                name: 'NearNews',
+                url: 'https://132544.edgevideo.ru/streams/132544_859499/1325441080/index.m3u8',
+                poster: 'https://i.ibb.co/3ymYVTH/nearnews-live-now.png',
+                status: false
+            },
+            {
+                id: 3,
+                name: 'Near-Life',
+                url: 'https://132544.edgevideo.ru/streams/132544_916574/playlist.m3u8',
+                poster: 'https://i.ibb.co/zHmGSYy/nearlife-live-now.png',
+                status: false
+            }
+        ];
+
+        const players = new Map();
+
+        function createStreamCard(stream) {
+            const card = document.createElement('div');
+            card.className = 'stream-card';
+            card.innerHTML = `
+                <div class="stream-info">
+                    <h3 class="channel-name">${stream.name}</h3>
+                </div>
+                <div class="player-container" id="player-${stream.id}"></div>
+            `;
+            return card;
+        }
+
+        function initializePlayer(stream) {
+            const container = document.getElementById(`player-${stream.id}`);
+            const video = document.createElement('video');
+            video.poster = stream.poster;
+            video.controls = true;
+            container.appendChild(video);
+
+            if (Hls.isSupported()) {
+                const hls = new Hls();
+                hls.loadSource(stream.url);
+                hls.attachMedia(video);
+                
+                hls.on(Hls.Events.MANIFEST_PARSED, () => {
+                    video.play().catch(() => {});
+                });
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = stream.url;
+            }
+
+            const player = new Plyr(video, {
+                settings: ['quality', 'speed'],
+                ratio: '16:9',
+                autoplay: false
+            });
+
+            players.set(stream.id, { player, hls: Hls.isSupported() ? hls : null });
+        }
+
+        async function checkStreamStatus(stream) {
+            try {
+                const response = await fetch(stream.url, { method: 'HEAD' });
+                return response.ok;
+            } catch (error) {
+                return false;
+            }
+        }
+
+        async function updateActiveStreams() {
+            const statusPromises = streams.map(async stream => {
+                stream.status = await checkStreamStatus(stream);
+                return stream;
+            });
+            
+            const updatedStreams = await Promise.all(statusPromises);
+            const activeStreams = updatedStreams.filter(stream => stream.status);
+
+            const container = document.getElementById('streamsContainer');
+            container.innerHTML = '';
+
+            if (activeStreams.length === 0) {
+                const message = document.createElement('div');
+                message.className = 'no-streams';
+                message.innerHTML = `
+                    Как здесь тихо...<br>
+                    Никаких эфиров нет.<br>
+                    <small>Проверьте позже</small>
+                `;
+                container.appendChild(message);
+            } else {
+                activeStreams.forEach(stream => {
+                    const card = createStreamCard(stream);
+                    container.appendChild(card);
+                    initializePlayer(stream);
+                });
+            }
+
+            setTimeout(updateActiveStreams, 30000);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            updateActiveStreams();
+        });
+    </script>
+</body>
+</html>
